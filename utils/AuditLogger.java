@@ -1,113 +1,94 @@
 package utils;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import database.DatabaseConnector;
 
-import Interfaces.Logger;
-import Dashboard.Customer;
+import java.io.Closeable;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.logging.Logger;
 
-public class AuditLogger implements Logger {
-    private static final String LOGS_DIRECTORY = "logs/audit/";
-    private PrintWriter fileLogger;
+public class AuditLogger implements Closeable {
+    public static final Logger logger = Logger.getLogger(AuditLogger.class.getName());
     private static AuditLogger instance;
+    private final Connection connection;
 
-    public enum AuditEventType {
-        LOGIN,
-        LOGOUT,
-        ACCOUNT_CREATION,
-        ACCOUNT_UPDATE,
-        PASSWORD_CHANGE,
-        TRANSACTION,
-        UPI_TRANSACTION,
-        FAILED_TRANSACTION,
-        SECURITY_EVENT,
-        ADMIN_ACTION,
-        SYSTEM_ERROR,
-        UNAUTHORIZED_ACCESS
+    public AuditLogger() throws SQLException {
+        this.connection = DatabaseConnector.getConnection();
     }
 
-    private AuditLogger() {
-        File logsDir = new File(LOGS_DIRECTORY);
-        if (!logsDir.exists()) {
-            logsDir.mkdirs();
-        }
-
-        try {
-            String logFileName = LOGS_DIRECTORY + "audit_" +
-                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".log";
-            this.fileLogger = new PrintWriter(new FileWriter(logFileName, true));
-        } catch (IOException e) {
-            System.err.println("Could not create audit log file: " + e.getMessage());
-        }
-    }
-
-    public static synchronized AuditLogger getInstance() {
+    public static AuditLogger getInstance() throws SQLException {
         if (instance == null) {
             instance = new AuditLogger();
         }
         return instance;
     }
 
+    public void logEvent(AuditEventType eventType, String message) {
+        logger.info("[" + eventType + "] " + message);
+    }
+
+    public void logEvent(AuditEventType eventType, String message, String username) {
+        String sql = "INSERT INTO audit_logs (username, event_type, description, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            statement.setString(2, eventType.name());
+            statement.setString(3, message);
+
+            statement.executeUpdate();
+
+            // Also print to console for immediate visibility
+            System.out.printf("[%s] %s: %s%n", eventType.name(),
+                    username != null ? username : "SYSTEM", message);
+        } catch (SQLException e) {
+            System.err.println("Error logging audit event: " + e.getMessage());
+
+            // Still print to console even if database logging fails
+            System.out.printf("[%s] %s: %s (DB LOG FAILED)%n", eventType.name(),
+                    username != null ? username : "SYSTEM", message);
+        }
+    }
+
     @Override
-    public void log(String message) {
-        logEvent(AuditEventType.SYSTEM_ERROR, message);
-    }
-
-    public void logEvent(Customer customer, AuditEventType eventType, String description) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        String logMessage = String.format(
-                "[%s] Customer: %s (ID: %s) | Event: %s | Description: %s",
-                timestamp,
-                customer != null ? customer.getUsername() : "SYSTEM",
-                customer != null ? customer.getUserId() : "N/A",
-                eventType,
-                description
-        );
-
-        System.out.println(logMessage);
-
-        if (fileLogger != null) {
-            fileLogger.println(logMessage);
-            fileLogger.flush();
-        }
-    }
-
-    public void logEvent(AuditEventType eventType, String description) {
-        logEvent(null, eventType, description);
-    }
-
-    public void logSecurityEvent(AuditEventType eventType, String ipAddress, String description) {
-        String securityLog = String.format("IP: %s | %s", ipAddress, description);
-        logEvent(eventType, securityLog);
-    }
-
-    public void logError(String errorMessage, Throwable throwable) {
-        String errorLog = errorMessage +
-                (throwable != null ? " | Exception: " + throwable.getClass().getSimpleName() +
-                        " | Message: " + throwable.getMessage() : "");
-
-        logEvent(AuditEventType.SYSTEM_ERROR, errorLog);
-
-        if (throwable != null) {
-            throwable.printStackTrace();
-        }
-    }
-
-    public void logFailedTransaction(Customer customer, String reason) {
-        logEvent(customer, AuditEventType.FAILED_TRANSACTION, "Transaction failed. Reason: " + reason);
-    }
-
-    public void logUnauthorizedAccess(String ipAddress, String attemptedAction) {
-        logSecurityEvent(AuditEventType.UNAUTHORIZED_ACCESS, ipAddress, "Unauthorized access attempt: " + attemptedAction);
-    }
-
     public void close() {
-        if (fileLogger != null) {
-            fileLogger.close();
+        // Nothing to close specifically, connection is managed by DatabaseConnector
+    }
+
+    public void log(AuditEventType eventType, String message) {
+        logEvent(eventType, message);
+    }
+
+    public enum AuditEventType {
+        LOGIN("Login"),
+        LOGIN_ADMIN("Admin Login"),
+        LOGOUT("Logout"),
+        LOGIN_FAILED("Login Failed"),
+        USER_CREATION("User Created"),
+        USER_UPDATE("User Updated"),
+        USER_DELETION("User Deleted"),
+        ACCOUNT_CREATION("Account Created"),
+        ACCOUNT_UPDATE("Account Updated"),
+        ACCOUNT_DELETION("Account Deleted"),
+        TRANSACTION("Transaction"),
+        UPI_REGISTRATION("UPI Registration"),
+        UPI_TRANSACTION("UPI Transaction"),
+        REPORT_GENERATION("Report Generated"),
+        SYSTEM("System Event"),
+        SYSTEM_INFO("System Information"),
+        ADMIN_ACTION("Admin Action"), SYSTEM_ERROR("System Error"), SECURITY_EVENT("Security Event"), PROFILE_UPDATE("Profile Update"), PASSWORD_CHANGE("Password Change"), NAVIGATION("Navigation"),
+        TRANSACTION_VIEW("Transaction View"),
+        UPI_PAYMENT_ATTEMPT("UPI Payment Attempt"),
+        ADMIN("Admin"), UNAUTHORIZED_ACCESS("Unauthorized Access"), ACCOUNT_LOCKED("Account Locked"), ACCOUNT_UNLOCKED("Account Unlocked"), PASSWORD_RESET("Password Reset"), PASSWORD_RESET_REQUEST("Password Reset Request"), USER_SUSPENDED("User Suspended"), USER_REACTIVATED("User Reactivated"), HELP("Help"), APPLICATION_SHUTDOWN(""), USER_LOGIN(""), NEW_USER("New User"), REGISTRATION_FAILED(""), UPI_PAYMENT("");
+
+        private final String displayName;
+
+        AuditEventType(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
         }
     }
 }

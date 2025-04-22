@@ -1,51 +1,97 @@
 package utils;
 
-import java.security.SecureRandom;
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
 public class EncryptionUtil {
-    private static final String CHAR_LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
-    private static final String CHAR_UPPERCASE = CHAR_LOWERCASE.toUpperCase();
-    private static final String DIGIT = "0123456789";
-    private static final String SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|;:,.<>?";
-    private static final int PASSWORD_LENGTH = 12;
+    private static final String ALGORITHM = "AES";
+    private static final String SECRET_KEY = "BankingAppSecKey";
+    private static final String HASH_ALGORITHM = "SHA-256";
 
-    public static String encryptPassword(String password) {
-        if (password == null || password.isEmpty()) {
-            return "";
+    public static String hashString(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+
+            // Convert byte array to a hexadecimal string
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            SystemMonitoring.logError("EncryptionUtil", "Error hashing string: " + e.getMessage());
+            return null;
         }
-        return Base64.getEncoder().encodeToString(password.getBytes());
     }
 
-    public static boolean verifyPassword(String password, String storedPassword) {
-        if (password == null || storedPassword == null) {
-            return false;
+    public static String hashPassword(String password) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+            byte[] hash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+
+            // Convert to hex (same as hashString)
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            SystemMonitoring.logError("EncryptionUtil", "Error hashing password: " + e.getMessage());
+            return password;
         }
-        return encryptPassword(password).equals(storedPassword);
     }
 
-    public static String generateRandomPassword() {
-        SecureRandom random = new SecureRandom();
-        StringBuilder password = new StringBuilder(PASSWORD_LENGTH);
-        String allChars = CHAR_LOWERCASE + CHAR_UPPERCASE + DIGIT + SPECIAL_CHARS;
+    public static boolean verifyPassword(String password, String hashedPassword) {
+        String hashedInput = hashPassword(password);
+        return hashedInput != null && hashedInput.equals(hashedPassword);
+    }
 
-        password.append(CHAR_LOWERCASE.charAt(random.nextInt(CHAR_LOWERCASE.length())));
-        password.append(CHAR_UPPERCASE.charAt(random.nextInt(CHAR_UPPERCASE.length())));
-        password.append(DIGIT.charAt(random.nextInt(DIGIT.length())));
-        password.append(SPECIAL_CHARS.charAt(random.nextInt(SPECIAL_CHARS.length())));
+    public static String encrypt(String input) {
+        try {
+            SecretKeySpec keySpec = generateKey();
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
 
-        for (int i = 4; i < PASSWORD_LENGTH; i++) {
-            password.append(allChars.charAt(random.nextInt(allChars.length())));
+            byte[] encrypted = cipher.doFinal(input.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception e) {
+            SystemMonitoring.logError("EncryptionUtil", "Error encrypting string: " + e.getMessage());
+            return null;
         }
+    }
 
-        char[] passwordChars = password.toString().toCharArray();
-        for (int i = passwordChars.length - 1; i > 0; i--) {
-            int index = random.nextInt(i + 1);
-            char temp = passwordChars[index];
-            passwordChars[index] = passwordChars[i];
-            passwordChars[i] = temp;
+    public static String decrypt(String input) {
+        try {
+            SecretKeySpec keySpec = generateKey();
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec);
+
+            byte[] decoded = Base64.getDecoder().decode(input);
+            byte[] decrypted = cipher.doFinal(decoded);
+            return new String(decrypted, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            SystemMonitoring.logError("EncryptionUtil", "Error decrypting string: " + e.getMessage());
+            return null;
         }
+    }
 
-        return new String(passwordChars);
+    private static SecretKeySpec generateKey() throws Exception {
+        MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+        byte[] bytes = SECRET_KEY.getBytes(StandardCharsets.UTF_8);
+        digest.update(bytes, 0, bytes.length);
+        byte[] key = digest.digest();
+        return new SecretKeySpec(key, ALGORITHM);
     }
 }

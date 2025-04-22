@@ -1,13 +1,15 @@
 package Interfaces;
 
+import model.User;
+
+import java.util.List;
+
 public interface AdminControls {
-    void addUser(String username, String password);
+    boolean addUser(User user);
 
-    void updateUser(String username, String newDetails);
+    boolean removeUser(String userId);
 
-    void deleteUser(String username);
+    boolean modifyUser(User user);
 
-    void monitorSystemLogs();
-
-    void assignRole(String username, String role);
+    List<User> searchUsers(String criteria);
 }

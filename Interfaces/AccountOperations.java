@@ -1,16 +1,26 @@
 package Interfaces;
 
+import model.Account;
+
+import java.math.BigDecimal;
+
 public interface AccountOperations {
 
-    void updateAccount(String accountNumber, String newDetails);
+    Account createAccount(String username, String accountType, BigDecimal initialBalance);
 
-    void deleteAccount(String accountNumber);
+    boolean updateAccount(String accountId, String newAccountType, BigDecimal newBalance, String newStatus);
 
-    void suspendAccount(String accountNumber);
+    boolean updateAccount(String accountNumber, String newDetails);
 
-    void reactivateAccount(String accountNumber);
+    boolean deleteAccount(String accountNumber);
 
-    double getAccountBalance(String accountNumber);
+    boolean suspendAccount(String accountNumber);
+
+    boolean reactivateAccount(String accountNumber);
+
+    BigDecimal getAccountBalance(String accountNumber);
 
     String getAccountDetails(String accountNumber);
+
+    boolean updateAccount(String accountId, BigDecimal newBalance);
 }
