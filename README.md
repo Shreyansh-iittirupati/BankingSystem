@@ -74,4 +74,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with 💻 by [Shreyansh](https://github.com/Shreyansh-iittirupati)
+Made with 💻 by [Shreyansh](https://github.com/Shreyansh-iittirupati) and [Suhail](https://github.com/superss2104)
